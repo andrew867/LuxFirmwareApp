@@ -1,0 +1,131 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            runtime: linux-x64
+            artifact_name: LuxFirmwareApp-linux-x64
+          - os: windows-latest
+            runtime: win-x64
+            artifact_name: LuxFirmwareApp-windows-x64
+          - os: macos-latest
+            runtime: osx-x64
+            artifact_name: LuxFirmwareApp-macos-x64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Publish
+        run: dotnet publish --configuration Release --no-build --self-contained true --runtime ${{ matrix.runtime }} -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish/${{ matrix.artifact_name }}
+
+      - name: Create zip archive (Linux/macOS)
+        if: matrix.os != 'windows-latest'
+        run: |
+          cd publish
+          zip -r ../${{ matrix.artifact_name }}.zip ${{ matrix.artifact_name }}
+
+      - name: Create zip archive (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "publish\${{ matrix.artifact_name }}\*" -DestinationPath "${{ matrix.artifact_name }}.zip" -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}.zip
+          retention-days: 90
+
+  create-release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get tag name
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          find artifacts -name "*.zip" -exec cp {} release/ \;
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Release ${{ steps.tag.outputs.tag }}
+          body: |
+            ## LuxFirmwareApp ${{ steps.tag.outputs.tag }}
+            
+            ### Downloads
+            
+            - **Windows x64**: [LuxFirmwareApp-windows-x64.zip](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/LuxFirmwareApp-windows-x64.zip)
+            - **Linux x64**: [LuxFirmwareApp-linux-x64.zip](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/LuxFirmwareApp-linux-x64.zip)
+            - **macOS x64**: [LuxFirmwareApp-macos-x64.zip](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/LuxFirmwareApp-macos-x64.zip)
+            
+            ### Installation
+            
+            1. Download the zip file for your platform
+            2. Extract the zip file
+            3. Run `LuxFirmwareApp` (or `LuxFirmwareApp.exe` on Windows)
+            
+            ### Usage
+            
+            ```bash
+            ./LuxFirmwareApp --help
+            ```
+            
+            See the [README](https://github.com/${{ github.repository }}/blob/main/README.md) for full documentation.
+          files: release/*.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
