@@ -23,9 +23,6 @@ jobs:
           - os: ubuntu-latest
             runtime: linux-x64
             artifact_name: LuxFirmwareApp-linux-x64
-          - os: ubuntu-latest
-            runtime: linux-x86
-            artifact_name: LuxFirmwareApp-linux-x86
           - os: windows-latest
             runtime: win-x64
             artifact_name: LuxFirmwareApp-windows-x64
@@ -46,10 +43,10 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Restore dependencies
-        run: dotnet restore
+        run: dotnet restore -r ${{ matrix.runtime }}
 
       - name: Build
-        run: dotnet build --configuration Release --no-restore
+        run: dotnet build --configuration Release --no-restore -r ${{ matrix.runtime }}
 
       - name: Publish
         run: dotnet publish --configuration Release --no-build --self-contained true --runtime ${{ matrix.runtime }} -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish/${{ matrix.artifact_name }}
@@ -118,7 +115,6 @@ jobs:
             
             **Linux:**
             - [Linux x64](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/LuxFirmwareApp-linux-x64.zip)
-            - [Linux x86 (32-bit)](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/LuxFirmwareApp-linux-x86.zip)
             
             **macOS:**
             - [macOS x64](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/LuxFirmwareApp-macos-x64.zip)
