@@ -45,11 +45,8 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore -r ${{ matrix.runtime }}
 
-      - name: Build
-        run: dotnet build --configuration Release --no-restore -r ${{ matrix.runtime }}
-
       - name: Publish
-        run: dotnet publish --configuration Release --no-build --self-contained true --runtime ${{ matrix.runtime }} -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish/${{ matrix.artifact_name }}
+        run: dotnet publish --configuration Release --self-contained true --runtime ${{ matrix.runtime }} -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish/${{ matrix.artifact_name }}
 
       - name: Create zip archive (Linux/macOS)
         if: matrix.os != 'windows-latest'
