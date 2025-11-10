@@ -381,32 +381,34 @@ public class FirmwareDownloader
         // Also save a metadata file with recordId for lookup
         var metadataPath = Path.Combine(targetDir, $"{cache.RecordId}.json");
         
-        // For WiFi dongle firmware, save as binary file; for others, save as JSON
-        if (cache.FirmwareDeviceType == FirmwareDeviceType.DONGLE_E_WIFI_DONGLE && cache.Firmware.Count > 0)
+        // Save metadata as JSON (always, with base64 data intact)
+        var json = JsonSerializer.Serialize(cache, new JsonSerializerOptions 
+        { 
+            WriteIndented = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        });
+        await File.WriteAllTextAsync(metadataPath, json);
+        
+        // For firmware files, decode base64 and save as binary
+        if (cache.Firmware.Count > 0)
         {
-            // Save as binary file (convert from base64 string to bytes)
-            var firmwareDataBase64 = cache.Firmware[0];
-            var firmwareData = Convert.FromBase64String(firmwareDataBase64);
-            await File.WriteAllBytesAsync(filePath, firmwareData);
+            // Combine all firmware chunks in order (by key/index)
+            var sortedChunks = cache.Firmware.OrderBy(kvp => kvp.Key).ToList();
+            var allFirmwareBytes = new List<byte>();
             
-            // Also save metadata as JSON
-            var json = JsonSerializer.Serialize(cache, new JsonSerializerOptions 
-            { 
-                WriteIndented = true,
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-            });
-            await File.WriteAllTextAsync(metadataPath, json);
+            foreach (var chunk in sortedChunks)
+            {
+                var chunkBytes = Convert.FromBase64String(chunk.Value);
+                allFirmwareBytes.AddRange(chunkBytes);
+            }
+            
+            // Save as binary file (decoded from base64)
+            await File.WriteAllBytesAsync(filePath, allFirmwareBytes.ToArray());
         }
         else
         {
-            // Save as JSON (for standard firmware)
-            var json = JsonSerializer.Serialize(cache, new JsonSerializerOptions 
-            { 
-                WriteIndented = true,
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-            });
-            await File.WriteAllTextAsync(filePath, json);
-            await File.WriteAllTextAsync(metadataPath, json);
+            // No firmware data, just save empty file or skip
+            Console.WriteLine($"Warning: No firmware data to save for {fileName}");
         }
         
         Console.WriteLine($"Saved firmware to {filePath}");
